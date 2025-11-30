@@ -2,215 +2,210 @@ import streamlit as st
 import sqlite3
 import json
 import random
-import pandas as pd # Vamos usar pandas para gráficos bonitos
+import pandas as pd
 from datetime import datetime
 
-# --- CONFIGURAÇÃO VISUAL DA PÁGINA ---
-st.set_page_config(
-    page_title="ENEM Master",
-    page_icon="🎓",
-    layout="wide", # Layout mais largo (tela cheia)
-    initial_sidebar_state="expanded"
-)
+# --- LISTAS DE CONTEÚDO ---
+FRASES_MOTIVACIONAIS = [
+    "Acredite: você é capaz de coisas incríveis! 🌟",
+    "Um passo de cada vez. O importante é não parar. 🚀",
+    "O erro é apenas um degrau para o acerto. Respire e tente de novo. 💙",
+    "Seu potencial é infinito. Confie no seu processo.",
+    "Você não está atrasado, você está no seu próprio tempo. ⏳",
+    "A educação é a arma mais poderosa para mudar o mundo (e o seu futuro). 🌍"
+]
 
-# --- CSS PERSONALIZADO (A MÁGICA DO DESIGN) ---
-st.markdown("""
-<style>
-    /* Estilo dos Botões */
-    .stButton>button {
-        width: 100%;
-        border-radius: 10px;
-        height: 3em;
-        font-weight: bold;
+# Configurações dos Temas
+TEMAS = {
+    "Padrão (Azul)": {
+        "primary": "#2E86C1", "bg": "#FFFFFF", "text": "#000000", "icon": "🎓",
+        "msg": "Vamos estudar!"
+    },
+    "Hogwarts (Mágico)": {
+        "primary": "#7F0909", "bg": "#F5F5DC", "text": "#2C1705", "icon": "⚡", 
+        "msg": "A magia do conhecimento espera por você!"
+    },
+    "Pride (Inclusivo)": {
+        "primary": "#FF0080", "bg": "#FFF0F5", "text": "#333333", "icon": "🌈",
+        "msg": "Seja você, estude do seu jeito! Todo amor é bem-vindo."
+    },
+    "Zen (Foco/Atípico)": {
+        "primary": "#4B6E59", "bg": "#E8F5E9", "text": "#1B2E21", "icon": "🌿",
+        "msg": "Respire. Foco. Calma. Você consegue."
     }
-    /* Caixa da Questão */
-    .stAlert {
-        border-radius: 10px;
-    }
-    /* Título Principal */
-    h1 {
-        color: #2E86C1;
-    }
-</style>
-""", unsafe_allow_html=True)
+}
 
-# --- FUNÇÕES DE BANCO DE DADOS ---
+# --- CONFIGURAÇÃO INICIAL ---
+st.set_page_config(page_title="Plataforma ENEM", page_icon="🎓", layout="wide")
+
+# --- FUNÇÕES ---
 def conectar_db():
     return sqlite3.connect('enem_simulado.db')
 
 def criar_tabelas():
     conn = conectar_db()
     cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS questoes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            disciplina TEXT, enunciado TEXT, alternativas TEXT,
-            letra_correta TEXT, explicacao TEXT, dificuldade TEXT
-        )
-    ''')
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS resultados (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            data TEXT, acertos INTEGER, total INTEGER
-        )
-    ''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS questoes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, disciplina TEXT, enunciado TEXT, 
+            alternativas TEXT, letra_correta TEXT, explicacao TEXT, dificuldade TEXT)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS resultados (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT, acertos INTEGER, total INTEGER)''')
     
-    # Seed (Dados iniciais)
+    # Verifica se precisa popular (Seed)
     cursor.execute('SELECT count(*) FROM questoes')
     if cursor.fetchone()[0] == 0:
         questoes_seed = [
-            ("Matemática", "Um produto custava R$ 100 e teve aumento de 20%, depois desconto de 20%. Qual preço final?", 
-             json.dumps({"A": "100", "B": "96", "C": "98", "D": "104", "E": "92"}), "B", "100 + 20% = 120. 120 - 20% (24) = 96.", "Média"),
-            ("História", "Quem proclamou a independência do Brasil?", 
-             json.dumps({"A": "D. Pedro II", "B": "D. Pedro I", "C": "Deodoro", "D": "Vargas", "E": "Lula"}), "B", "Foi D. Pedro I em 1822.", "Fácil"),
-            ("Química", "Qual o símbolo do Ouro na tabela periódica?", 
-             json.dumps({"A": "Ou", "B": "Ag", "C": "Au", "D": "Fe", "E": "O"}), "C", "Vem do latim Aurum.", "Média"),
-            ("Física", "Qual a fórmula da velocidade média?", 
-             json.dumps({"A": "Vm = d/t", "B": "Vm = m.a", "C": "Vm = m.g", "D": "Vm = d.t", "E": "Vm = t/d"}), "A", "Velocidade é a distância dividida pelo tempo.", "Fácil"),
-            ("Biologia", "Qual a organela responsável pela respiração celular?", 
-             json.dumps({"A": "Ribossomo", "B": "Mitocôndria", "C": "Lisossomo", "D": "Golgi", "E": "Núcleo"}), "B", "A mitocôndria produz energia (ATP).", "Média")
+            ("Matemática", "Se um bruxo compra 3 varinhas por R$ 30 cada e ganha 10% de desconto, quanto ele paga?", 
+             json.dumps({"A": "R$ 80", "B": "R$ 81", "C": "R$ 90", "D": "R$ 85", "E": "R$ 75"}), "B", "3 x 30 = 90. 10% de 90 é 9. 90 - 9 = 81.", "Fácil"),
+            ("História", "A Revolta da Chibata (1910) lutava contra o quê?", 
+             json.dumps({"A": "A monarquia", "B": "Castigos físicos na Marinha", "C": "A escravidão", "D": "O aumento de impostos", "E": "A falta de magia"}), "B", "Liderada por João Cândido, lutava contra castigos corporais.", "Média"),
+            ("Biologia", "O que diferencia uma célula vegetal de uma animal?", 
+             json.dumps({"A": "A presença de mitocôndria", "B": "O DNA", "C": "A parede celular e cloroplastos", "D": "O núcleo", "E": "O tamanho"}), "C", "Células vegetais têm parede rígida e fazem fotossíntese.", "Média")
         ]
         cursor.executemany('INSERT INTO questoes (disciplina, enunciado, alternativas, letra_correta, explicacao, dificuldade) VALUES (?, ?, ?, ?, ?, ?)', questoes_seed)
         conn.commit()
     conn.close()
 
-# --- BARRA LATERAL (SIDEBAR) ---
-def mostrar_sidebar():
-    with st.sidebar:
-        st.header("👤 Perfil do Aluno")
-        st.info("Status: Estudante Focado 🚀")
-        
-        st.divider()
-        st.subheader("📜 Histórico Recente")
-        
-        conn = conectar_db()
-        try:
-            df = pd.read_sql_query('SELECT data, acertos, total FROM resultados ORDER BY id DESC LIMIT 5', conn)
-            if not df.empty:
-                # Mostra uma tabela limpa sem index
-                st.dataframe(df, hide_index=True, use_container_width=True)
-                
-                # Cálculo rápido de média
-                total_questoes = df['total'].sum()
-                total_acertos = df['acertos'].sum()
-                if total_questoes > 0:
-                    media = (total_acertos / total_questoes) * 100
-                    st.metric("Sua Precisão Global", f"{media:.1f}%")
-            else:
-                st.write("Nenhum simulado ainda.")
-        except:
-            st.write("Carregando histórico...")
-        finally:
-            conn.close()
-            
-        st.divider()
-        st.caption("Desenvolvido com Python & Streamlit")
-
-# --- INICIALIZAÇÃO ---
 criar_tabelas()
-if 'pagina' not in st.session_state:
-    st.session_state.pagina = 'home'
 
-mostrar_sidebar()
+# Inicializa variaveis de sessão
+if 'pagina' not in st.session_state: st.session_state.pagina = 'home'
+if 'tema_escolhido' not in st.session_state: st.session_state.tema_escolhido = "Padrão (Azul)"
+if 'fonte_dislexia' not in st.session_state: st.session_state.fonte_dislexia = False
+if 'msg_do_dia' not in st.session_state: st.session_state.msg_do_dia = random.choice(FRASES_MOTIVACIONAIS)
 
-# --- TELA: HOME ---
-if st.session_state.pagina == 'home':
-    # Cabeçalho bonito
-    col_a, col_b = st.columns([1, 4])
-    with col_a:
-        st.image("https://cdn-icons-png.flaticon.com/512/3407/3407024.png", width=100)
-    with col_b:
-        st.title("Plataforma ENEM Master")
-        st.write("Sua jornada para a universidade começa aqui.")
-
-    st.divider()
-
-    # Cards de Ação (Usando colunas para organizar)
-    c1, c2, c3 = st.columns(3)
+# --- SIDEBAR (PERSONALIZAÇÃO) ---
+with st.sidebar:
+    st.title("⚙️ Personalização")
     
-    with c1:
-        with st.container(border=True):
-            st.subheader("📝 Simulado Rápido")
-            st.write("3 questões aleatórias para testar conhecimentos.")
-            if st.button("Começar Agora", type="primary"):
-                conn = conectar_db()
-                cursor = conn.cursor()
-                cursor.execute('SELECT * FROM questoes ORDER BY RANDOM() LIMIT 3')
-                st.session_state.questoes_atuais = cursor.fetchall()
-                conn.close()
-                st.session_state.indice_q = 0
-                st.session_state.acertos = 0
-                st.session_state.respostas_usuario = {}
-                st.session_state.pagina = 'quiz'
-                st.rerun()
-
-    with c2:
-        with st.container(border=True):
-            st.subheader("📚 Revisão")
-            st.write("Veja questões que você errou anteriormente.")
-            st.button("Em Breve", disabled=True)
-
-    with c3:
-        with st.container(border=True):
-            st.subheader("🏆 Ranking")
-            st.write("Compare seu desempenho com outros alunos.")
-            st.button("Em Breve", disabled=True)
-
-# --- TELA: QUIZ ---
-elif st.session_state.pagina == 'quiz':
-    if 'questoes_atuais' not in st.session_state or not st.session_state.questoes_atuais:
-        st.session_state.pagina = 'home'
+    # Seletor de Tema
+    novo_tema = st.selectbox("Escolha seu Estilo:", list(TEMAS.keys()), index=list(TEMAS.keys()).index(st.session_state.tema_escolhido))
+    if novo_tema != st.session_state.tema_escolhido:
+        st.session_state.tema_escolhido = novo_tema
         st.rerun()
 
+    # Acessibilidade
+    st.markdown("---")
+    st.subheader("♿ Acessibilidade")
+    if st.toggle("Fonte para Dislexia (OpenDyslexic)", value=st.session_state.fonte_dislexia):
+        st.session_state.fonte_dislexia = True
+    else:
+        st.session_state.fonte_dislexia = False
+        
+    st.markdown("---")
+    st.info(f"💡 **Mensagem do dia:**\n\n{st.session_state.msg_do_dia}")
+
+# --- APLICAÇÃO DO ESTILO (CSS MÁGICO) ---
+tema_atual = TEMAS[st.session_state.tema_escolhido]
+fonte_css = "Comic Sans MS, sans-serif" if st.session_state.fonte_dislexia else "sans-serif"
+
+st.markdown(f"""
+<style>
+    /* Aplica o fundo e a fonte */
+    .stApp {{
+        background-color: {tema_atual['bg']};
+        color: {tema_atual['text']};
+        font-family: {fonte_css} !important;
+    }}
+    /* Botões */
+    .stButton>button {{
+        background-color: {tema_atual['primary']};
+        color: white;
+        border-radius: 12px;
+        border: none;
+        height: 50px;
+        font-weight: bold;
+        width: 100%;
+    }}
+    /* Títulos */
+    h1, h2, h3 {{
+        color: {tema_atual['primary']} !important;
+        font-family: {fonte_css} !important;
+    }}
+    /* Textos */
+    p, li, label {{
+        color: {tema_atual['text']};
+        font-family: {fonte_css} !important;
+        font-size: 18px !important; /* Aumenta letra para facilitar leitura */
+    }}
+</style>
+""", unsafe_allow_html=True)
+
+# --- TELA HOME ---
+if st.session_state.pagina == 'home':
+    col_logo, col_titulo = st.columns([1, 5])
+    with col_logo:
+        st.markdown(f"<h1 style='font-size: 60px;'>{tema_atual['icon']}</h1>", unsafe_allow_html=True)
+    with col_titulo:
+        st.title("Plataforma ENEM Inclusiva")
+        st.markdown(f"*{tema_atual['msg']}*")
+    
+    st.markdown("---")
+    
+    # Botão Principal Gigante
+    if st.button("🚀 INICIAR SIMULADO AGORA", type="primary"):
+        conn = conectar_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM questoes ORDER BY RANDOM() LIMIT 3')
+        st.session_state.questoes_atuais = cursor.fetchall()
+        conn.close()
+        st.session_state.indice_q = 0
+        st.session_state.acertos = 0
+        st.session_state.respostas_usuario = {}
+        st.session_state.pagina = 'quiz'
+        st.rerun()
+
+    st.markdown("<br>", unsafe_allow_html=True) # Espaço
+    
+    # Botões extras (Com KEYS únicas para corrigir o erro)
+    c1, c2 = st.columns(2)
+    with c1:
+        with st.container(border=True):
+            st.subheader("📚 Meus Erros")
+            st.write("Revise o que precisa melhorar.")
+            st.button("Em Breve", disabled=True, key="btn_revisao_erro") # KEY ÚNICA AQUI
+    with c2:
+        with st.container(border=True):
+            st.subheader("🏆 Conquistas")
+            st.write("Veja suas medalhas e progresso.")
+            st.button("Em Breve", disabled=True, key="btn_ranking_top") # KEY ÚNICA AQUI
+
+# --- TELA QUIZ ---
+elif st.session_state.pagina == 'quiz':
+    if not st.session_state.get('questoes_atuais'):
+        st.session_state.pagina = 'home'
+        st.rerun()
+        
     q_atual = st.session_state.questoes_atuais[st.session_state.indice_q]
     total_q = len(st.session_state.questoes_atuais)
     
-    # Barra de Progresso no Topo
-    st.progress((st.session_state.indice_q) / total_q, text=f"Questão {st.session_state.indice_q + 1} de {total_q}")
+    st.progress((st.session_state.indice_q) / total_q)
+    st.subheader(f"Questão {st.session_state.indice_q + 1} de {total_q}")
     
-    # Layout da Questão em um "Container"
     with st.container(border=True):
-        # Cabeçalho da questão (Disciplina e Dificuldade)
-        c_topo1, c_topo2 = st.columns([3, 1])
-        with c_topo1:
-            st.markdown(f"**Disciplina:** {q_atual[1]}")
-        with c_topo2:
-            cor_badge = "orange" if q_atual[6] == "Média" else "green" if q_atual[6] == "Fácil" else "red"
-            st.markdown(f":{cor_badge}[{q_atual[6]}]")
-        
-        st.divider()
-        
-        # Enunciado (Fonte maior)
+        st.markdown(f"**{q_atual[1]}** | Nível: {q_atual[6]}")
         st.markdown(f"### {q_atual[2]}")
         
         alternativas = json.loads(q_atual[3])
         chave_radio = f"radio_{q_atual[0]}"
         
-        # Opções
-        opcao = st.radio(
-            "Selecione a alternativa:", 
-            list(alternativas.keys()), 
-            format_func=lambda x: f"{x}) {alternativas[x]}",
-            key=chave_radio
-        )
-
-    # Botão de Ação (Abaixo do card)
-    col_btn1, col_btn2 = st.columns([1, 2])
-    
-    with col_btn2:
-        if st.button("✅ Confirmar Resposta", type="primary"):
+        opcao = st.radio("Sua resposta:", list(alternativas.keys()), 
+                        format_func=lambda x: f"{x}) {alternativas[x]}", key=chave_radio)
+        
+    col_b1, col_b2 = st.columns([1, 2])
+    with col_b2:
+        if st.button("CONFIRMAR RESPOSTA", key="btn_confirma"):
             if opcao == q_atual[4]:
-                st.toast("Resposta Correta!", icon="🎉") # Notificação pop-up
+                st.toast("Parabéns! Você acertou! 🎉")
                 if chave_radio not in st.session_state.respostas_usuario:
                      st.session_state.acertos += 1
                      st.session_state.respostas_usuario[chave_radio] = True
                 
-                # Pula automático após pequeno delay (simulado)
                 if st.session_state.indice_q < total_q - 1:
                     st.session_state.indice_q += 1
                     st.rerun()
                 else:
-                    # Fim do quiz
+                    # Salva resultado
                     conn = conectar_db()
                     conn.execute('INSERT INTO resultados (data, acertos, total) VALUES (?, ?, ?)', 
                                  (datetime.now().strftime("%d/%m %H:%M"), st.session_state.acertos, total_q))
@@ -219,49 +214,37 @@ elif st.session_state.pagina == 'quiz':
                     st.session_state.pagina = 'resultado'
                     st.rerun()
             else:
-                st.error(f"❌ Errado! A resposta certa era {q_atual[4]}.")
-                with st.expander("💡 Ver Explicação do Professor"):
+                st.error(f"Poxa, não foi dessa vez. A correta é a letra {q_atual[4]}.")
+                with st.expander("Ver explicação simples"):
                     st.write(q_atual[5])
                 
-                # Botão para avançar manual se errou
-                if st.button("Continuar ➡️"):
+                if st.button("Continuar", key="btn_prox_erro"):
                      if st.session_state.indice_q < total_q - 1:
                         st.session_state.indice_q += 1
                         st.rerun()
                      else:
                         st.session_state.pagina = 'resultado'
                         st.rerun()
-
-    with col_btn1:
-        if st.button("Sair"):
+    with col_b1:
+        if st.button("Sair", key="btn_sair"):
             st.session_state.pagina = 'home'
             st.rerun()
 
-# --- TELA: RESULTADO ---
+# --- TELA RESULTADO ---
 elif st.session_state.pagina == 'resultado':
     st.balloons()
-    
-    # Centralizar resultado
-    st.markdown("<h1 style='text-align: center;'>Resultado do Simulado</h1>", unsafe_allow_html=True)
+    st.title("Resultado Final")
     
     acertos = st.session_state.acertos
     total = len(st.session_state.questoes_atuais)
-    nota = (acertos / total) * 1000
     
-    # Métricas Grandes
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Acertos", f"{acertos}", f"de {total}")
-    c2.metric("Nota TRI", f"{nota:.0f}", delta_color="normal")
-    c3.metric("Aproveitamento", f"{(acertos/total)*100:.0f}%")
+    st.metric("Total de Acertos", f"{acertos} / {total}")
     
-    st.divider()
-    
-    # Feedback Visual
-    if nota > 700:
-        st.success("🌟 Desempenho Incrível! Você está pronto.")
-    elif nota > 400:
-        st.warning("⚠️ Bom começo, mas vamos revisar as matérias.")
+    if acertos == total:
+        st.success("Perfeito! Você destruiu! 🌟")
+    elif acertos > total/2:
+        st.info("Mandou bem! Continue assim.")
     else:
-        st.error("🚨 Atenção! Precisamos focar na base.")
+        st.warning("Não desista. O aprendizado vem da prática. 💪")
         
-    st.button("🏠 Voltar ao Início", on_click=lambda: st.session_state.update(pagina='home'), type="primary")
+    st.button("Voltar ao Início", on_click=lambda: st.session_state.update(pagina='home'))
