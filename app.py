@@ -5,246 +5,302 @@ import random
 import pandas as pd
 from datetime import datetime
 
-# --- LISTAS DE CONTEÚDO ---
-FRASES_MOTIVACIONAIS = [
-    "Acredite: você é capaz de coisas incríveis! 🌟",
-    "Um passo de cada vez. O importante é não parar. 🚀",
-    "O erro é apenas um degrau para o acerto. Respire e tente de novo. 💙",
-    "Seu potencial é infinito. Confie no seu processo.",
-    "Você não está atrasado, você está no seu próprio tempo. ⏳",
-    "A educação é a arma mais poderosa para mudar o mundo (e o seu futuro). 🌍"
-]
+# --- CONFIGURAÇÃO INICIAL E ESTILO ---
+st.set_page_config(page_title="ENEM Pro", page_icon="🎓", layout="wide")
 
-# Configurações dos Temas
+# URLs de Imagens para deixar o app visual (Hospedadas publicamente)
+IMG_BANNER = "https://img.freepik.com/free-vector/gradient-high-school-illustration_23-2149369800.jpg"
+IMG_QUIZ = "https://img.freepik.com/free-vector/exams-concept-illustration_114360-2754.jpg"
+IMG_RESULTADO = "https://img.freepik.com/free-vector/business-success-concept-illustration_114360-842.jpg"
+
+# Temas Visuais
 TEMAS = {
-    "Padrão (Azul)": {
-        "primary": "#2E86C1", "bg": "#FFFFFF", "text": "#000000", "icon": "🎓",
-        "msg": "Vamos estudar!"
-    },
-    "Hogwarts (Mágico)": {
-        "primary": "#7F0909", "bg": "#F5F5DC", "text": "#2C1705", "icon": "⚡", 
-        "msg": "A magia do conhecimento espera por você!"
-    },
-    "Pride (Inclusivo)": {
-        "primary": "#FF0080", "bg": "#FFF0F5", "text": "#333333", "icon": "🌈",
-        "msg": "Seja você, estude do seu jeito! Todo amor é bem-vindo."
-    },
-    "Zen (Foco/Atípico)": {
-        "primary": "#4B6E59", "bg": "#E8F5E9", "text": "#1B2E21", "icon": "🌿",
-        "msg": "Respire. Foco. Calma. Você consegue."
-    }
+    "Padrão (Profissional)": {"primary": "#2E86C1", "bg": "#F4F6F7", "text": "#1B2631", "card_bg": "#FFFFFF"},
+    "Hogwarts (Mágico)": {"primary": "#7F0909", "bg": "#F5F5DC", "text": "#2C1705", "card_bg": "#EFEFD0"},
+    "Pride (Inclusivo)": {"primary": "#FF0080", "bg": "#FFF0F5", "text": "#333333", "card_bg": "#FFFFFF"},
+    "Modo Foco (Zen)": {"primary": "#4B6E59", "bg": "#E8F5E9", "text": "#1B2E21", "card_bg": "#FFFFFF"}
 }
 
-# --- CONFIGURAÇÃO INICIAL ---
-st.set_page_config(page_title="Plataforma ENEM", page_icon="🎓", layout="wide")
-
-# --- FUNÇÕES ---
+# --- FUNÇÕES DE BANCO DE DADOS ---
 def conectar_db():
-    return sqlite3.connect('enem_simulado.db')
+    return sqlite3.connect('enem_pro.db')
 
 def criar_tabelas():
     conn = conectar_db()
-    cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS questoes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, disciplina TEXT, enunciado TEXT, 
-            alternativas TEXT, letra_correta TEXT, explicacao TEXT, dificuldade TEXT)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS resultados (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT, acertos INTEGER, total INTEGER)''')
+    c = conn.cursor()
+    # Tabela Questões
+    c.execute('''CREATE TABLE IF NOT EXISTS questoes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, disciplina TEXT, assunto TEXT, enunciado TEXT, 
+        alternativas TEXT, letra_correta TEXT, explicacao TEXT, dificuldade TEXT)''')
+    # Tabela Resultados
+    c.execute('''CREATE TABLE IF NOT EXISTS resultados (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT, acertos INTEGER, total INTEGER, disciplina TEXT)''')
+    # Tabela Flashcards (Erros)
+    c.execute('''CREATE TABLE IF NOT EXISTS flashcards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, questao_id INTEGER, enunciado TEXT, 
+        resposta_certa TEXT, explicacao TEXT, revisado INTEGER DEFAULT 0)''')
     
-    # Verifica se precisa popular (Seed)
-    cursor.execute('SELECT count(*) FROM questoes')
-    if cursor.fetchone()[0] == 0:
-        questoes_seed = [
-            ("Matemática", "Se um bruxo compra 3 varinhas por R$ 30 cada e ganha 10% de desconto, quanto ele paga?", 
-             json.dumps({"A": "R$ 80", "B": "R$ 81", "C": "R$ 90", "D": "R$ 85", "E": "R$ 75"}), "B", "3 x 30 = 90. 10% de 90 é 9. 90 - 9 = 81.", "Fácil"),
-            ("História", "A Revolta da Chibata (1910) lutava contra o quê?", 
-             json.dumps({"A": "A monarquia", "B": "Castigos físicos na Marinha", "C": "A escravidão", "D": "O aumento de impostos", "E": "A falta de magia"}), "B", "Liderada por João Cândido, lutava contra castigos corporais.", "Média"),
-            ("Biologia", "O que diferencia uma célula vegetal de uma animal?", 
-             json.dumps({"A": "A presença de mitocôndria", "B": "O DNA", "C": "A parede celular e cloroplastos", "D": "O núcleo", "E": "O tamanho"}), "C", "Células vegetais têm parede rígida e fazem fotossíntese.", "Média")
+    # POPULAR BANCO (SEED EXPANDIDO)
+    c.execute('SELECT count(*) FROM questoes')
+    if c.fetchone()[0] == 0:
+        questoes = [
+            # Matemática
+            ("Matemática", "Porcentagem", "Um celular custa R$ 1.000. Com 20% de desconto à vista, qual o valor?", '{"A":"800", "B":"900", "C":"850", "D":"950", "E":"820"}', "A", "1000 - 200 = 800.", "Fácil"),
+            ("Matemática", "Geometria", "Qual a área de um quadrado de lado 5cm?", '{"A":"20", "B":"25", "C":"10", "D":"15", "E":"30"}', "B", "Lado x Lado = 5x5 = 25.", "Fácil"),
+            ("Matemática", "Funções", "Se f(x) = 2x + 1, qual o valor de f(3)?", '{"A":"5", "B":"6", "C":"7", "D":"8", "E":"9"}', "C", "2(3) + 1 = 6 + 1 = 7.", "Média"),
+            ("Matemática", "Probabilidade", "Lançando um dado, qual a chance de sair número par?", '{"A":"20%", "B":"50%", "C":"30%", "D":"25%", "E":"100%"}', "B", "Pares: 2,4,6 (3 chances em 6) = 50%.", "Média"),
+            # Humanas
+            ("História", "Brasil Colônia", "Qual foi o primeiro ciclo econômico do Brasil?", '{"A":"Ouro", "B":"Café", "C":"Pau-Brasil", "D":"Cana", "E":"Soja"}', "C", "Extração de pau-brasil foi a primeira atividade.", "Fácil"),
+            ("História", "Era Vargas", "A CLT foi criada em qual governo?", '{"A":"Lula", "B":"FHC", "C":"Vargas", "D":"JK", "E":"Pedro II"}', "C", "Getúlio Vargas criou a CLT em 1943.", "Fácil"),
+            ("Geografia", "Urbanização", "O processo de crescimento das cidades chama-se:", '{"A":"Ruralização", "B":"Urbanização", "C":"Êxodo", "D":"Conurbação", "E":"Gentrificação"}', "B", "Urbanização é o crescimento urbano.", "Fácil"),
+            # Natureza
+            ("Biologia", "Citologia", "A 'usina de energia' da célula é a:", '{"A":"Mitocôndria", "B":"Núcleo", "C":"Ribossomo", "D":"Golgi", "E":"Vacúolo"}', "A", "Mitocôndrias produzem ATP.", "Média"),
+            ("Física", "Cinemática", "Fórmula da velocidade média:", '{"A":"Vm=d/t", "B":"F=m.a", "C":"E=mc2", "D":"V=R.i", "E":"P=m.g"}', "A", "Distância dividido pelo tempo.", "Fácil"),
+            ("Química", "Atomística", "O átomo é formado por:", '{"A":"Só prótons", "B":"Prótons, Nêutrons e Elétrons", "C":"Água", "D":"Células", "E":"Só elétrons"}', "B", "Estrutura básica: núcleo e eletrosfera.", "Fácil")
         ]
-        cursor.executemany('INSERT INTO questoes (disciplina, enunciado, alternativas, letra_correta, explicacao, dificuldade) VALUES (?, ?, ?, ?, ?, ?)', questoes_seed)
+        c.executemany('INSERT INTO questoes (disciplina, assunto, enunciado, alternativas, letra_correta, explicacao, dificuldade) VALUES (?,?,?,?,?,?,?)', questoes)
         conn.commit()
     conn.close()
 
+# Função para Salvar Erro no Flashcard
+def salvar_erro_flashcard(q_dados):
+    conn = conectar_db()
+    # Verifica se já existe para não duplicar
+    check = conn.execute('SELECT * FROM flashcards WHERE questao_id = ?', (q_dados[0],)).fetchone()
+    if not check:
+        conn.execute('INSERT INTO flashcards (questao_id, enunciado, resposta_certa, explicacao) VALUES (?,?,?,?)', 
+                     (q_dados[0], q_dados[3], q_dados[5], q_dados[6]))
+        conn.commit()
+    conn.close()
+
+# --- INICIALIZAÇÃO DO ESTADO ---
 criar_tabelas()
-
-# Inicializa variaveis de sessão
 if 'pagina' not in st.session_state: st.session_state.pagina = 'home'
-if 'tema_escolhido' not in st.session_state: st.session_state.tema_escolhido = "Padrão (Azul)"
-if 'fonte_dislexia' not in st.session_state: st.session_state.fonte_dislexia = False
-if 'msg_do_dia' not in st.session_state: st.session_state.msg_do_dia = random.choice(FRASES_MOTIVACIONAIS)
+if 'tema' not in st.session_state: st.session_state.tema = "Padrão (Profissional)"
 
-# --- SIDEBAR (PERSONALIZAÇÃO) ---
-with st.sidebar:
-    st.title("⚙️ Personalização")
-    
-    # Seletor de Tema
-    novo_tema = st.selectbox("Escolha seu Estilo:", list(TEMAS.keys()), index=list(TEMAS.keys()).index(st.session_state.tema_escolhido))
-    if novo_tema != st.session_state.tema_escolhido:
-        st.session_state.tema_escolhido = novo_tema
-        st.rerun()
-
-    # Acessibilidade
-    st.markdown("---")
-    st.subheader("♿ Acessibilidade")
-    if st.toggle("Fonte para Dislexia (OpenDyslexic)", value=st.session_state.fonte_dislexia):
-        st.session_state.fonte_dislexia = True
-    else:
-        st.session_state.fonte_dislexia = False
-        
-    st.markdown("---")
-    st.info(f"💡 **Mensagem do dia:**\n\n{st.session_state.msg_do_dia}")
-
-# --- APLICAÇÃO DO ESTILO (CSS MÁGICO) ---
-tema_atual = TEMAS[st.session_state.tema_escolhido]
-fonte_css = "Comic Sans MS, sans-serif" if st.session_state.fonte_dislexia else "sans-serif"
-
+# --- APLICAÇÃO DE ESTILO CSS DINÂMICO ---
+tema = TEMAS[st.session_state.tema]
 st.markdown(f"""
 <style>
-    /* Aplica o fundo e a fonte */
-    .stApp {{
-        background-color: {tema_atual['bg']};
-        color: {tema_atual['text']};
-        font-family: {fonte_css} !important;
-    }}
-    /* Botões */
-    .stButton>button {{
-        background-color: {tema_atual['primary']};
-        color: white;
-        border-radius: 12px;
-        border: none;
-        height: 50px;
-        font-weight: bold;
-        width: 100%;
-    }}
-    /* Títulos */
-    h1, h2, h3 {{
-        color: {tema_atual['primary']} !important;
-        font-family: {fonte_css} !important;
-    }}
-    /* Textos */
-    p, li, label {{
-        color: {tema_atual['text']};
-        font-family: {fonte_css} !important;
-        font-size: 18px !important; /* Aumenta letra para facilitar leitura */
-    }}
+    .stApp {{ background-color: {tema['bg']}; color: {tema['text']}; }}
+    .stButton>button {{ background-color: {tema['primary']}; color: white; border-radius: 8px; border: none; height: 45px; width: 100%; }}
+    .card {{ background-color: {tema['card_bg']}; padding: 20px; border-radius: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }}
+    h1, h2, h3 {{ color: {tema['primary']} !important; }}
 </style>
 """, unsafe_allow_html=True)
 
-# --- TELA HOME ---
-if st.session_state.pagina == 'home':
-    col_logo, col_titulo = st.columns([1, 5])
-    with col_logo:
-        st.markdown(f"<h1 style='font-size: 60px;'>{tema_atual['icon']}</h1>", unsafe_allow_html=True)
-    with col_titulo:
-        st.title("Plataforma ENEM Inclusiva")
-        st.markdown(f"*{tema_atual['msg']}*")
+# --- SIDEBAR ---
+with st.sidebar:
+    st.image("https://cdn-icons-png.flaticon.com/512/4792/4792929.png", width=80)
+    st.title("Menu do Aluno")
     
-    st.markdown("---")
-    
-    # Botão Principal Gigante
-    if st.button("🚀 INICIAR SIMULADO AGORA", type="primary"):
-        conn = conectar_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM questoes ORDER BY RANDOM() LIMIT 3')
-        st.session_state.questoes_atuais = cursor.fetchall()
-        conn.close()
-        st.session_state.indice_q = 0
-        st.session_state.acertos = 0
-        st.session_state.respostas_usuario = {}
-        st.session_state.pagina = 'quiz'
-        st.rerun()
-
-    st.markdown("<br>", unsafe_allow_html=True) # Espaço
-    
-    # Botões extras (Com KEYS únicas para corrigir o erro)
-    c1, c2 = st.columns(2)
-    with c1:
-        with st.container(border=True):
-            st.subheader("📚 Meus Erros")
-            st.write("Revise o que precisa melhorar.")
-            st.button("Em Breve", disabled=True, key="btn_revisao_erro") # KEY ÚNICA AQUI
-    with c2:
-        with st.container(border=True):
-            st.subheader("🏆 Conquistas")
-            st.write("Veja suas medalhas e progresso.")
-            st.button("Em Breve", disabled=True, key="btn_ranking_top") # KEY ÚNICA AQUI
-
-# --- TELA QUIZ ---
-elif st.session_state.pagina == 'quiz':
-    if not st.session_state.get('questoes_atuais'):
+    if st.button("🏠 Início", use_container_width=True):
         st.session_state.pagina = 'home'
         st.rerun()
         
-    q_atual = st.session_state.questoes_atuais[st.session_state.indice_q]
-    total_q = len(st.session_state.questoes_atuais)
-    
-    st.progress((st.session_state.indice_q) / total_q)
-    st.subheader(f"Questão {st.session_state.indice_q + 1} de {total_q}")
-    
-    with st.container(border=True):
-        st.markdown(f"**{q_atual[1]}** | Nível: {q_atual[6]}")
-        st.markdown(f"### {q_atual[2]}")
-        
-        alternativas = json.loads(q_atual[3])
-        chave_radio = f"radio_{q_atual[0]}"
-        
-        opcao = st.radio("Sua resposta:", list(alternativas.keys()), 
-                        format_func=lambda x: f"{x}) {alternativas[x]}", key=chave_radio)
-        
-    col_b1, col_b2 = st.columns([1, 2])
-    with col_b2:
-        if st.button("CONFIRMAR RESPOSTA", key="btn_confirma"):
-            if opcao == q_atual[4]:
-                st.toast("Parabéns! Você acertou! 🎉")
-                if chave_radio not in st.session_state.respostas_usuario:
-                     st.session_state.acertos += 1
-                     st.session_state.respostas_usuario[chave_radio] = True
-                
-                if st.session_state.indice_q < total_q - 1:
-                    st.session_state.indice_q += 1
-                    st.rerun()
-                else:
-                    # Salva resultado
-                    conn = conectar_db()
-                    conn.execute('INSERT INTO resultados (data, acertos, total) VALUES (?, ?, ?)', 
-                                 (datetime.now().strftime("%d/%m %H:%M"), st.session_state.acertos, total_q))
-                    conn.commit()
-                    conn.close()
-                    st.session_state.pagina = 'resultado'
-                    st.rerun()
-            else:
-                st.error(f"Poxa, não foi dessa vez. A correta é a letra {q_atual[4]}.")
-                with st.expander("Ver explicação simples"):
-                    st.write(q_atual[5])
-                
-                if st.button("Continuar", key="btn_prox_erro"):
-                     if st.session_state.indice_q < total_q - 1:
-                        st.session_state.indice_q += 1
-                        st.rerun()
-                     else:
-                        st.session_state.pagina = 'resultado'
-                        st.rerun()
-    with col_b1:
-        if st.button("Sair", key="btn_sair"):
-            st.session_state.pagina = 'home'
-            st.rerun()
+    if st.button("🧠 Meus Flashcards (Erros)", use_container_width=True):
+        st.session_state.pagina = 'flashcards'
+        st.rerun()
 
-# --- TELA RESULTADO ---
+    st.markdown("---")
+    st.write("🎨 **Personalize:**")
+    novo_tema = st.selectbox("Tema:", list(TEMAS.keys()), index=list(TEMAS.keys()).index(st.session_state.tema))
+    if novo_tema != st.session_state.tema:
+        st.session_state.tema = novo_tema
+        st.rerun()
+
+    # Frase motivacional aleatória sempre que carrega
+    frases = ["O sucesso é a soma de pequenos esforços.", "Você é capaz!", "Respire fundo e continue.", "Cada erro é um aprendizado."]
+    st.info(f"💡 {random.choice(frases)}")
+
+# --- PÁGINA: HOME ---
+if st.session_state.pagina == 'home':
+    # Banner Hero
+    st.image(IMG_BANNER, use_container_width=True)
+    
+    st.title(f"Bem-vindo(a), Estudante!")
+    st.markdown("### Prepare-se para o ENEM de forma inteligente.")
+    
+    st.markdown("---")
+    
+    c1, c2 = st.columns([1, 1])
+    
+    with c1:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.subheader("🚀 Gerar Simulado")
+        
+        # Filtro de Matéria
+        opcoes_materia = ["Mix Geral (Todas)", "Matemática", "História", "Biologia", "Física", "Química", "Geografia"]
+        materia_escolhida = st.selectbox("Qual o foco de hoje?", opcoes_materia)
+        
+        qtd_questoes = st.slider("Quantas questões?", 3, 10, 5)
+        
+        if st.button("Começar Prova"):
+            conn = conectar_db()
+            if materia_escolhida == "Mix Geral (Todas)":
+                query = 'SELECT * FROM questoes ORDER BY RANDOM() LIMIT ?'
+                params = (qtd_questoes,)
+            else:
+                query = 'SELECT * FROM questoes WHERE disciplina = ? ORDER BY RANDOM() LIMIT ?'
+                params = (materia_escolhida, qtd_questoes)
+            
+            questoes = conn.execute(query, params).fetchall()
+            conn.close()
+            
+            if not questoes:
+                st.error("Poxa, ainda não temos questões suficientes dessa matéria no banco!")
+            else:
+                st.session_state.questoes_atuais = questoes
+                st.session_state.indice = 0
+                st.session_state.acertos = 0
+                st.session_state.respostas_user = {}
+                st.session_state.disciplina_atual = materia_escolhida
+                st.session_state.pagina = 'quiz'
+                st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with c2:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.subheader("📊 Seu Progresso")
+        conn = conectar_db()
+        df = pd.read_sql_query("SELECT * FROM resultados ORDER BY id DESC LIMIT 3", conn)
+        conn.close()
+        
+        if not df.empty:
+            for index, row in df.iterrows():
+                st.markdown(f"**{row['data']}** | {row['disciplina']}")
+                st.progress(row['acertos'] / row['total'])
+        else:
+            st.info("Faça seu primeiro simulado para ver as estatísticas!")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+# --- PÁGINA: QUIZ (SIMULADO) ---
+elif st.session_state.pagina == 'quiz':
+    if 'questoes_atuais' not in st.session_state:
+        st.session_state.pagina = 'home'
+        st.rerun()
+        
+    q = st.session_state.questoes_atuais[st.session_state.indice]
+    total = len(st.session_state.questoes_atuais)
+    
+    # Visual do Quiz
+    col_img, col_txt = st.columns([1, 3])
+    with col_img:
+        st.image(IMG_QUIZ, width=150)
+    with col_txt:
+        st.progress((st.session_state.indice + 1) / total)
+        st.caption(f"Questão {st.session_state.indice + 1} de {total} | {q[1]} ({q[2]})")
+    
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown(f"### {q[3]}") # Enunciado
+    
+    alts = json.loads(q[4])
+    chave = f"q_{q[0]}"
+    
+    # Se já respondeu, mostra estado, senão mostra input
+    ja_respondeu = chave in st.session_state.respostas_user
+    
+    if not ja_respondeu:
+        escolha = st.radio("Alternativa:", list(alts.keys()), format_func=lambda x: f"{x}) {alts[x]}", key=chave)
+        
+        if st.button("Confirmar Resposta"):
+            st.session_state.respostas_user[chave] = escolha
+            if escolha == q[5]:
+                st.toast("✅ ACERTOU!", icon="🔥")
+                st.session_state.acertos += 1
+            else:
+                st.toast("❌ Errou! Salvando no Flashcard...", icon="💾")
+                # LÓGICA DE FLASHCARD AUTOMÁTICO
+                salvar_erro_flashcard(q)
+            st.rerun() # Recarrega para mostrar o feedback
+            
+    else:
+        # TELA DE FEEDBACK PÓS-RESPOSTA
+        escolha_feita = st.session_state.respostas_user[chave]
+        if escolha_feita == q[5]:
+            st.success(f"Você marcou {escolha_feita}. Correto! 🎉")
+        else:
+            st.error(f"Você marcou {escolha_feita}. A correta era {q[5]}.")
+            st.warning(f"📝 **Flashcard Criado!** Essa questão foi para sua revisão.")
+            with st.expander("Ver Explicação"):
+                st.write(q[6])
+        
+        # Botão Próximo / Finalizar
+        if st.session_state.indice < total - 1:
+            if st.button("Próxima Questão ➡️"):
+                st.session_state.indice += 1
+                st.rerun()
+        else:
+            if st.button("Finalizar Simulado 🏁"):
+                conn = conectar_db()
+                conn.execute("INSERT INTO resultados (data, acertos, total, disciplina) VALUES (?,?,?,?)",
+                             (datetime.now().strftime("%d/%m %H:%M"), st.session_state.acertos, total, st.session_state.disciplina_atual))
+                conn.commit()
+                conn.close()
+                st.session_state.pagina = 'resultado'
+                st.rerun()
+                
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# --- PÁGINA: RESULTADO ---
 elif st.session_state.pagina == 'resultado':
     st.balloons()
-    st.title("Resultado Final")
+    st.markdown('<div class="card" style="text-align:center">', unsafe_allow_html=True)
+    st.image(IMG_RESULTADO, width=200)
+    st.title("Simulado Finalizado!")
     
     acertos = st.session_state.acertos
     total = len(st.session_state.questoes_atuais)
+    nota = (acertos/total) * 1000
     
-    st.metric("Total de Acertos", f"{acertos} / {total}")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Acertos", f"{acertos}/{total}")
+    c2.metric("Nota Estimada", f"{nota:.0f}")
+    c3.metric("Erros (Flashcards)", f"{total - acertos}")
     
-    if acertos == total:
-        st.success("Perfeito! Você destruiu! 🌟")
-    elif acertos > total/2:
-        st.info("Mandou bem! Continue assim.")
+    st.divider()
+    
+    if total - acertos > 0:
+        if st.button("🧠 Revisar meus Erros agora (Flashcards)"):
+            st.session_state.pagina = 'flashcards'
+            st.rerun()
+            
+    if st.button("🏠 Voltar ao Início"):
+        st.session_state.pagina = 'home'
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# --- PÁGINA: FLASHCARDS (REVISÃO) ---
+elif st.session_state.pagina == 'flashcards':
+    st.title("🧠 Revisão Inteligente (Flashcards)")
+    st.write("Aqui estão as questões que você errou. Treine até aprender!")
+    
+    conn = conectar_db()
+    cards = conn.execute("SELECT * FROM flashcards").fetchall()
+    
+    if not cards:
+        st.image("https://cdn-icons-png.flaticon.com/512/7486/7486744.png", width=150)
+        st.success("Você não tem flashcards pendentes! Você é um gênio! 🤓")
+        if st.button("Voltar"):
+            st.session_state.pagina = 'home'
+            st.rerun()
     else:
-        st.warning("Não desista. O aprendizado vem da prática. 💪")
+        # Mostra cards em Grid
+        for card in cards:
+            # card: id, q_id, enun, resp, expl, revisado
+            with st.container(border=True):
+                c_a, c_b = st.columns([4, 1])
+                with c_a:
+                    st.markdown(f"**Questão:** {card[2]}")
+                with c_b:
+                    if st.button("🗑️", key=f"del_{card[0]}", help="Já aprendi, remover"):
+                        conn.execute("DELETE FROM flashcards WHERE id = ?", (card[0],))
+                        conn.commit()
+                        st.rerun()
+                
+                # Efeito de "Virar Carta" usando Expander
+                with st.expander("Ocultar/Mostrar Resposta"):
+                    st.info(f"**Resposta Correta:** {card[3]}")
+                    st.write(f"**Explicação:** {card[4]}")
         
-    st.button("Voltar ao Início", on_click=lambda: st.session_state.update(pagina='home'))
+        conn.close()
